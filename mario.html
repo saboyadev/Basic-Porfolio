@@ -1,0 +1,444 @@
+<!DOCTYPE html>
+<html lang="en-us">
+<head>
+    <meta charset="utf-8" />
+    <title>Super Mario Style Game</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <link rel="stylesheet" type="text/css" href="assets/css/style.css" />
+    <link rel="stylesheet" type="text/css" href="assets/css/mario-style.css" />
+</head>
+<body>
+    <header class="main-header">
+        <div class="container">
+            <h1 id="logo">Super Mario Style Game</h1>
+            <nav id="nav-menu">
+                <ul>
+                    <li><a href="index.html">About</a></li>
+                    <li>|</li>
+                    <li><a href="porfolio.html">Portfolio</a></li>
+                    <li>|</li>
+                    <li><a href="contact.html">Contact</a></li>
+                    <li>|</li>
+                    <li><a href="mario.html">Play</a></li>
+                </ul>
+            </nav>
+        </div>
+    </header>
+
+    <div class="wrapper">
+        <main class="container" id="game-wrapper">
+            <section id="game-intro">
+                <h2>Browser Platformer (Mario-inspired)</h2>
+                <p>Use <strong>Arrow Keys</strong> or <strong>WASD</strong> to move and jump. Collect coins, avoid enemies, and reach the flag!</p>
+            </section>
+
+            <section id="hud">
+                <span>Coins: <strong id="coin-count">0</strong></span>
+                <span>Lives: <strong id="life-count">3</strong></span>
+                <span>Status: <strong id="status-text">Running</strong></span>
+                <button id="restart-button" type="button">Restart</button>
+            </section>
+
+            <canvas id="game-canvas" width="960" height="540" aria-label="Mario style platform game"></canvas>
+        </main>
+    </div>
+
+    <footer id="main-footer">
+        <span>&copy; 2026 Mario-inspired fan project for learning.</span>
+    </footer>
+
+    <script>
+        const canvas = document.getElementById('game-canvas');
+        const context = canvas.getContext('2d');
+        const coinCountElement = document.getElementById('coin-count');
+        const lifeCountElement = document.getElementById('life-count');
+        const statusElement = document.getElementById('status-text');
+        const restartButton = document.getElementById('restart-button');
+
+        const levelWidth = 3200;
+        const gravity = 0.8;
+        const keys = {};
+
+        const colors = {
+            sky: '#8fd3ff',
+            ground: '#6f4e37',
+            grass: '#5ab64a',
+            player: '#ef3b2d',
+            enemy: '#7a4030',
+            coin: '#ffd34f',
+            platform: '#b87333',
+            flagPole: '#d9d9d9',
+            flag: '#2ecc71'
+        };
+
+        const world = {
+            groundY: 470,
+            platforms: [
+                { x: 200, y: 390, width: 140, height: 20 },
+                { x: 430, y: 330, width: 180, height: 20 },
+                { x: 760, y: 285, width: 120, height: 20 },
+                { x: 980, y: 360, width: 190, height: 20 },
+                { x: 1280, y: 310, width: 220, height: 20 },
+                { x: 1660, y: 380, width: 180, height: 20 },
+                { x: 1980, y: 330, width: 160, height: 20 },
+                { x: 2280, y: 270, width: 180, height: 20 },
+                { x: 2590, y: 340, width: 180, height: 20 },
+                { x: 2870, y: 290, width: 120, height: 20 }
+            ],
+            coins: [
+                { x: 260, y: 345, collected: false },
+                { x: 490, y: 285, collected: false },
+                { x: 560, y: 285, collected: false },
+                { x: 810, y: 240, collected: false },
+                { x: 1060, y: 315, collected: false },
+                { x: 1360, y: 265, collected: false },
+                { x: 1450, y: 265, collected: false },
+                { x: 1740, y: 335, collected: false },
+                { x: 2040, y: 285, collected: false },
+                { x: 2360, y: 225, collected: false },
+                { x: 2650, y: 295, collected: false },
+                { x: 2930, y: 245, collected: false }
+            ],
+            enemies: [
+                { x: 620, y: 440, width: 40, height: 30, minX: 560, maxX: 770, speed: 1.3, direction: 1, alive: true },
+                { x: 1180, y: 440, width: 40, height: 30, minX: 1120, maxX: 1300, speed: 1.7, direction: -1, alive: true },
+                { x: 1860, y: 440, width: 40, height: 30, minX: 1810, maxX: 2000, speed: 1.2, direction: 1, alive: true },
+                { x: 2480, y: 440, width: 40, height: 30, minX: 2430, maxX: 2620, speed: 1.5, direction: -1, alive: true }
+            ],
+            flag: { x: 3075, y: 170, width: 15, height: 300 }
+        };
+
+        const playerBase = {
+            width: 42,
+            height: 52,
+            speed: 4.4,
+            jump: -14,
+            startX: 80,
+            startY: 200
+        };
+
+        const gameState = {
+            cameraX: 0,
+            score: 0,
+            lives: 3,
+            won: false,
+            gameOver: false,
+            invulnerableFrames: 0
+        };
+
+        const player = {
+            x: playerBase.startX,
+            y: playerBase.startY,
+            vx: 0,
+            vy: 0,
+            onGround: false,
+            width: playerBase.width,
+            height: playerBase.height
+        };
+
+        function resetWorldObjects() {
+            world.coins.forEach((coin) => {
+                coin.collected = false;
+            });
+
+            world.enemies.forEach((enemy, index) => {
+                enemy.alive = true;
+                if (index === 0) {
+                    enemy.x = 620;
+                }
+                if (index === 1) {
+                    enemy.x = 1180;
+                }
+                if (index === 2) {
+                    enemy.x = 1860;
+                }
+                if (index === 3) {
+                    enemy.x = 2480;
+                }
+                enemy.direction = enemy.direction >= 0 ? 1 : -1;
+            });
+        }
+
+        function resetPlayerPosition() {
+            player.x = playerBase.startX;
+            player.y = playerBase.startY;
+            player.vx = 0;
+            player.vy = 0;
+            player.onGround = false;
+            gameState.cameraX = 0;
+        }
+
+        function restartGame() {
+            gameState.score = 0;
+            gameState.lives = 3;
+            gameState.won = false;
+            gameState.gameOver = false;
+            gameState.invulnerableFrames = 0;
+            resetWorldObjects();
+            resetPlayerPosition();
+            updateHud();
+        }
+
+        function updateHud() {
+            coinCountElement.textContent = String(gameState.score);
+            lifeCountElement.textContent = String(gameState.lives);
+
+            if (gameState.won) {
+                statusElement.textContent = 'You Won!';
+            } else if (gameState.gameOver) {
+                statusElement.textContent = 'Game Over';
+            } else {
+                statusElement.textContent = 'Running';
+            }
+        }
+
+        function isOverlapping(a, b) {
+            return a.x < b.x + b.width &&
+                a.x + a.width > b.x &&
+                a.y < b.y + b.height &&
+                a.y + a.height > b.y;
+        }
+
+        function applyInput() {
+            player.vx = 0;
+            if (keys.ArrowLeft || keys.KeyA) {
+                player.vx = -playerBase.speed;
+            }
+            if (keys.ArrowRight || keys.KeyD) {
+                player.vx = playerBase.speed;
+            }
+
+            if ((keys.ArrowUp || keys.KeyW || keys.Space) && player.onGround) {
+                player.vy = playerBase.jump;
+                player.onGround = false;
+            }
+        }
+
+        function moveEnemies() {
+            world.enemies.forEach((enemy) => {
+                if (!enemy.alive) {
+                    return;
+                }
+
+                enemy.x += enemy.speed * enemy.direction;
+                if (enemy.x <= enemy.minX || enemy.x + enemy.width >= enemy.maxX) {
+                    enemy.direction *= -1;
+                }
+            });
+        }
+
+        function resolveCollisions() {
+            player.onGround = false;
+
+            if (player.y + player.height >= world.groundY) {
+                player.y = world.groundY - player.height;
+                player.vy = 0;
+                player.onGround = true;
+            }
+
+            world.platforms.forEach((platform) => {
+                const falling = player.vy >= 0;
+                const playerBottom = player.y + player.height;
+                const previousBottom = playerBottom - player.vy;
+                const withinX = player.x + player.width > platform.x && player.x < platform.x + platform.width;
+
+                if (falling && withinX && previousBottom <= platform.y && playerBottom >= platform.y) {
+                    player.y = platform.y - player.height;
+                    player.vy = 0;
+                    player.onGround = true;
+                }
+            });
+        }
+
+        function collectCoins() {
+            world.coins.forEach((coin) => {
+                if (coin.collected) {
+                    return;
+                }
+
+                const coinBox = { x: coin.x, y: coin.y, width: 18, height: 18 };
+                if (isOverlapping(player, coinBox)) {
+                    coin.collected = true;
+                    gameState.score += 1;
+                }
+            });
+        }
+
+        function handleEnemyInteractions() {
+            world.enemies.forEach((enemy) => {
+                if (!enemy.alive) {
+                    return;
+                }
+
+                if (isOverlapping(player, enemy)) {
+                    const stomped = player.vy > 2 && player.y + player.height - 10 <= enemy.y;
+                    if (stomped) {
+                        enemy.alive = false;
+                        player.vy = -9;
+                    } else if (gameState.invulnerableFrames === 0) {
+                        gameState.lives -= 1;
+                        gameState.invulnerableFrames = 90;
+                        resetPlayerPosition();
+                        if (gameState.lives <= 0) {
+                            gameState.gameOver = true;
+                        }
+                    }
+                }
+            });
+        }
+
+        function checkWinCondition() {
+            const flagZone = {
+                x: world.flag.x - 20,
+                y: world.groundY - 120,
+                width: 60,
+                height: 120
+            };
+
+            if (isOverlapping(player, flagZone)) {
+                gameState.won = true;
+            }
+        }
+
+        function updateCamera() {
+            const targetX = player.x - canvas.width * 0.35;
+            gameState.cameraX = Math.max(0, Math.min(levelWidth - canvas.width, targetX));
+        }
+
+        function update() {
+            if (gameState.won || gameState.gameOver) {
+                updateHud();
+                draw();
+                return;
+            }
+
+            applyInput();
+            moveEnemies();
+
+            player.x += player.vx;
+            player.x = Math.max(0, Math.min(levelWidth - player.width, player.x));
+
+            player.vy += gravity;
+            player.y += player.vy;
+
+            resolveCollisions();
+            collectCoins();
+            handleEnemyInteractions();
+            checkWinCondition();
+            updateCamera();
+
+            if (gameState.invulnerableFrames > 0) {
+                gameState.invulnerableFrames -= 1;
+            }
+
+            updateHud();
+            draw();
+            requestAnimationFrame(update);
+        }
+
+        function drawBackground() {
+            context.fillStyle = colors.sky;
+            context.fillRect(0, 0, canvas.width, canvas.height);
+
+            context.fillStyle = '#b0e58e';
+            context.fillRect(0, world.groundY - gameState.cameraX * 0, canvas.width, canvas.height - world.groundY);
+        }
+
+        function drawWorld() {
+            context.save();
+            context.translate(-gameState.cameraX, 0);
+
+            context.fillStyle = colors.grass;
+            context.fillRect(0, world.groundY - 12, levelWidth, 12);
+            context.fillStyle = colors.ground;
+            context.fillRect(0, world.groundY, levelWidth, canvas.height - world.groundY);
+
+            context.fillStyle = colors.platform;
+            world.platforms.forEach((platform) => {
+                context.fillRect(platform.x, platform.y, platform.width, platform.height);
+            });
+
+            world.coins.forEach((coin) => {
+                if (coin.collected) {
+                    return;
+                }
+
+                context.fillStyle = colors.coin;
+                context.beginPath();
+                context.arc(coin.x + 9, coin.y + 9, 9, 0, Math.PI * 2);
+                context.fill();
+            });
+
+            world.enemies.forEach((enemy) => {
+                if (!enemy.alive) {
+                    return;
+                }
+
+                context.fillStyle = colors.enemy;
+                context.fillRect(enemy.x, enemy.y, enemy.width, enemy.height);
+                context.fillStyle = '#fff';
+                context.fillRect(enemy.x + 8, enemy.y + 8, 6, 6);
+                context.fillRect(enemy.x + 24, enemy.y + 8, 6, 6);
+            });
+
+            context.fillStyle = colors.flagPole;
+            context.fillRect(world.flag.x, world.flag.y, world.flag.width, world.flag.height);
+            context.fillStyle = colors.flag;
+            context.fillRect(world.flag.x + 15, world.flag.y + 25, 60, 32);
+
+            const blink = gameState.invulnerableFrames > 0 && Math.floor(gameState.invulnerableFrames / 5) % 2 === 0;
+            if (!blink) {
+                context.fillStyle = colors.player;
+                context.fillRect(player.x, player.y, player.width, player.height);
+                context.fillStyle = '#1f1f1f';
+                context.fillRect(player.x + 10, player.y + 12, 8, 8);
+                context.fillRect(player.x + 24, player.y + 12, 8, 8);
+            }
+
+            context.restore();
+        }
+
+        function drawOverlay() {
+            if (!gameState.won && !gameState.gameOver) {
+                return;
+            }
+
+            context.fillStyle = 'rgba(0, 0, 0, 0.6)';
+            context.fillRect(0, 0, canvas.width, canvas.height);
+
+            context.fillStyle = '#fff';
+            context.font = 'bold 48px Arial, sans-serif';
+            context.textAlign = 'center';
+
+            const text = gameState.won ? 'You Saved The Day!' : 'Game Over';
+            context.fillText(text, canvas.width / 2, canvas.height / 2 - 20);
+            context.font = '24px Arial, sans-serif';
+            context.fillText('Press Restart to play again', canvas.width / 2, canvas.height / 2 + 28);
+        }
+
+        function draw() {
+            drawBackground();
+            drawWorld();
+            drawOverlay();
+        }
+
+        window.addEventListener('keydown', (event) => {
+            keys[event.code] = true;
+        });
+
+        window.addEventListener('keyup', (event) => {
+            keys[event.code] = false;
+        });
+
+        restartButton.addEventListener('click', () => {
+            restartGame();
+            draw();
+            requestAnimationFrame(update);
+        });
+
+        restartGame();
+        draw();
+        requestAnimationFrame(update);
+    </script>
+</body>
+</html>
